@@ -1,99 +1,3 @@
-import pandas as pd
-import re
-import matplotlib.pyplot as plt
-
-
-
-# --------------------
-# Load Data
-# --------------------
-pub = pd.read_csv("csv-KnowledgeG-set.csv")
-scopus = pd.read_csv("scopus_export_Feb 25-2026_d93c044b-5fec-4da5-8d30-ad7cb2501782.csv")
-ieee = pd.read_csv("export2026.02.25-06.45.35.csv")
-
-
-# --------------------
-# Helpers
-# --------------------
-def norm_text(x):
-    if pd.isna(x):
-        return "" # treat NaN as empty string for text normalization
-    x = str(x).lower().strip() 
-    x = re.sub(r"\s+", " ", x) 
-    return x
-
-def norm_doi(x):
-    if pd.isna(x):
-        return "" # treat NaN as empty string for DOI normalization
-    x = str(x).strip().lower()
-    x = x.replace("https://doi.org/", "").replace("http://doi.org/", "").replace("doi:", "").strip()
-    x = re.sub(r"\s+", "", x) 
-    return x
-
-def norm_title_key(title):
-    t = norm_text(title)
-    t = re.sub(r"[^\w\s]", " ", t)     # remove punctuation / removes avery thing that is not a letter like numbers, whitespaces etc. and replaces it with a space
-    t = re.sub(r"\s+", " ", t).strip() # after cleaning, collapse multiple spaces and trim
-    return t
-
-def contains_any(text, keywords):
-    t = norm_text(text)
-    return any(k in t for k in keywords) # filtering if a keyword is present in a string, returns true if any of the keywords are present in the string
-
-
-# ----------------------------------------------------
-# Standardize each dataset to common columns
-# ----------------------------------------------------
-
-
-COMMON_COLUMNS = ["Title", "Authors", "Year", "Journal", "DOI", "Source"]
-
-pub_df = pd.DataFrame({
-    "Title": pub.get("Title", ""),
-    "Authors": pub.get("Authors", ""),
-    "Year": pub.get("Publication Year", ""),
-    "Journal": pub.get("Journal/Book", ""),
-    "DOI": pub.get("DOI", ""),
-    "Source": "PubMed"
-})
-
-scopus_df = pd.DataFrame({
-    "Title": scopus.get("Title", ""),
-    "Authors": scopus.get("Author full names", ""),
-    "Year": scopus.get("Year", ""),
-    "Journal": scopus.get("Source title", ""),
-    "DOI": scopus.get("DOI", ""),
-    "Source": "Scopus"
-})
-
-ieee_df = pd.DataFrame({
-    "Title": ieee.get("Document Title", ""),
-    "Authors": ieee.get("Authors", ""),
-    "Year": ieee.get("Publication Year", ""),
-    "Journal": ieee.get("Publication Title", ""),
-    "DOI": ieee.get("DOI", ""),
-    "Source": "IEEE"
-})
-
-combined = pd.concat([pub_df, scopus_df, ieee_df], ignore_index=True)[COMMON_COLUMNS]
-
-
-# --------------------
-# Normalized fields
-# --------------------
-combined["DOI_norm"] = combined["DOI"].apply(norm_doi) # normalizing the DOI field by applying the norm_doi function to clean and standardize the DOI values across records
-combined["Title_norm"] = combined["Title"].apply(norm_text) # normalizing the Title field by applying the norm_text function to clean and standardize the title values across records (lowercasing, trimming, collapsing spaces)
-combined["Title_key"]  = combined["Title"].apply(norm_title_key) # creating a Title_key field by applying the norm_title_key function to the Title field, which further processes the title by removing punctuation and non-word characters, collapsing multiple spaces, and trimming. This creates a simplified version of the title that can be used for deduplication and matching purposes.
-combined["Year"] = combined["Year"].astype(str).str.extract(r"(\d{4})", expand=False).fillna("") # extracting the year from the Year field by using a regular expression to find a 4-digit number, converting it to string, and filling any missing values with an empty string. This standardizes the Year field for easier comparison and analysis.
-
-print("Combined dataset shape:", combined.shape)
-
-
-counts = combined["Source"].value_counts().sort_index()
-
-print("\nNumber of papers per database:")
-print(counts)
-
 
 
 # ----------------------------------------------------
@@ -297,3 +201,21 @@ print("Unique after dedup:", unique_after_dedup)
 print("Removed duplicates:", removed_duplicates)
 print("Review (unique):", review_unique)
 print("No access (unique):", no_access_unique)
+
+
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+# ============================================================
+# ENTRY POINT 
+# ============================================================
+if __name__ == "__main__":
+    identifier = LiteratureIdentification(
+        pubmed_path = "csv-KnowledgeG-set.csv",
+        scopus_path = "scopus_export_Feb_25-2026_d93c044b-5fec-4da5-8d30-ad7cb2501782.csv",
+        ieee_path   = "export2026_02_25-06_45_35.csv"
+    )
+    master = identifier.run()
