@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import pandas as pd
+from pathlib import Path
 
 class LiteraturePlots:
     @staticmethod
@@ -44,7 +45,7 @@ class LiteraturePlots:
             kept_papers
         ]
 
-        # (κρατάω τα χρώματά σου)
+        
         colors = [
             "#4C72B0", "#A1ADC2", "#373B42",
             "#2ecc71",
@@ -66,7 +67,12 @@ class LiteraturePlots:
             )
 
         legend_patches = [
-            mpatches.Patch(color="#4C72B0", label="Records by source"),
+            # Sources (match the first three bars exactly)
+            mpatches.Patch(color="#4C72B0", label="PubMed records"),
+            mpatches.Patch(color="#A1ADC2", label="Scopus records"),
+            mpatches.Patch(color="#373B42", label="IEEE records"),
+
+            # Pipeline steps (match remaining bars)
             mpatches.Patch(color="#2ecc71", label="Total records (raw)"),
             mpatches.Patch(color="#e74c3c", label="Duplicates removed (raw→dedup)"),
             mpatches.Patch(color="#27ae60", label="Unique papers (dedup)"),
