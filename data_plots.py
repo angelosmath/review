@@ -2,10 +2,14 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import pandas as pd
 from pathlib import Path
+import seaborn as sns
+import re
+import numpy as np
+
 
 class LiteraturePlots:
     @staticmethod
-    def identification_summary(master: pd.DataFrame,out_dir: str = None):
+    def identification_summary(master: pd.DataFrame,out_dir: Path | None = None):
         total = len(master)
 
         pubmed = int((master["Source"] == "PubMed").sum())
@@ -92,7 +96,44 @@ class LiteraturePlots:
 
         plt.tight_layout()
         plt.savefig(out_dir / "step01_identification_summary.png", dpi=300)
-        plt.show()
+        #plt.show()
+
+
+
+    @staticmethod
+    def thematic_heatmap(master: pd.DataFrame, themes: dict, out_dir: Path | None = None):
+        
+        # Δεν κάνουμε ξανά drop_duplicates γιατί έχει γίνει σωστά στο AI Screening
+        df = master.copy()
+
+        # Παίρνουμε τα ονόματα των στηλών που έχει ήδη υπολογίσει το AI (από τα keys του dict)
+        theme_names = list(themes.keys())
+
+        # Υπολογισμός Co-occurrence Matrix χρησιμοποιώντας ΑΠΕΥΘΕΙΑΣ τις AI στήλες
+        matrix = pd.DataFrame(index=theme_names, columns=theme_names, dtype=int)
+        for t1 in theme_names:
+            for t2 in theme_names:
+                # Κάνουμε απλή καταμέτρηση όπου και τα δύο (t1, t2) είναι 1
+                matrix.loc[t1, t2] = ((df[t1] == 1) & (df[t2] == 1)).sum()
+
+        matrix_int = matrix.astype(int)
+        
+        # Χρησιμοποιούμε "Reds" για να φανεί έντονα το λευκό κενό των Agents
+        plt.figure(figsize=(14, 12))
+        sns.heatmap(matrix_int, annot=True, fmt="d", cmap="Reds", square=True,
+                    cbar_kws={'label': 'Paper Count'},
+                    annot_kws={"size": 14, "weight": "bold"})
+        
+        plt.title("Thematic Co-occurrence Heatmap", fontsize=16, fontweight="bold", pad=20)
+        plt.xticks(rotation=45, ha='right', fontsize=11)
+        plt.yticks(fontsize=11)
+        plt.tight_layout()
+
+        if out_dir:
+            plt.savefig(Path(out_dir) / "step02_thematic_heatmap.png", dpi=300)
+        #plt.show()
+
+
 
     # @staticmethod
     # def thematic_heatmap(...)        

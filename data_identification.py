@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from data_analysis import LiteraturePlots
+from data_plots import LiteraturePlots
 from pathlib import Path
 
 
@@ -22,10 +22,6 @@ class LiteratureIdentification:
     # PUBLIC METHOD: run everything in sequence
     # ----------------------------------------------------------
     def run(self) -> pd.DataFrame:
-        """Execute full identification pipeline and return master_unique."""
-        print("\n" + "=" * 50)
-        print(" LITERATURE IDENTIFICATION PIPELINE")
-        print("=" * 50)
 
         self._load()
         self._normalize()
@@ -35,7 +31,6 @@ class LiteratureIdentification:
         self._print_summary()
 
         LiteraturePlots.identification_summary(self.master, out_dir=self.OUT_DIR)
-
         return self.master
 
     # ----------------------------------------------------------
@@ -171,9 +166,12 @@ class LiteratureIdentification:
         print(" IDENTIFICATION SUMMARY")
         print("=" * 50)
         print(f"  Total records loaded        : {total}")
-        print(f"  duplicate    : {dupes_removed}")
+        print(f"  duplicate                   : {dupes_removed}")
         print(f"  Review/Conf flagged (rows)  : {revconf}")
         print("=" * 50)
+
+        print(self.master['Source'].value_counts())
+        
         
         
     
@@ -235,13 +233,4 @@ class LiteratureIdentification:
         # whole-word review
         return re.search(r"\breview\b", t) is not None
     
-# ============================================================
-# ENTRY POINT 
-# ============================================================
-if __name__ == "__main__":
-    identifier = LiteratureIdentification(
-        pubmed_path = "/home/amath/Desktop/review_v1/data/csv-KnowledgeG-set.csv",
-        scopus_path = "/home/amath/Desktop/review_v1/data/scopus_export_Feb 25-2026_d93c044b-5fec-4da5-8d30-ad7cb2501782.csv",
-        ieee_path   = "/home/amath/Desktop/review_v1/data/export2026.02.25-06.45.35.csv"
-    )
-    master = identifier.run()
+
