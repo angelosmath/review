@@ -4,63 +4,141 @@ from data_identification import LiteratureIdentification
 from data_screening import DataScreening
 from data_plots import LiteraturePlots
 
+
 def main():
-    print("\n>>> STARTING STEP 01: DATA IDENTIFICATION")
+
+    # ----------------------------------------------------------
+    # PATHS
+    # ----------------------------------------------------------
     BASE_DIR = Path("/home/amath/Desktop/review_v1")
     DATA_DIR = BASE_DIR / "data"
     OUT_DIR  = BASE_DIR / "output"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # --- STEP 01 ---
+    # ----------------------------------------------------------
+    # STEP 01 — DATA IDENTIFICATION
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 01: DATA IDENTIFICATION")
+    print("=" * 60)
+
     identifier = LiteratureIdentification(
         pubmed_path = str(DATA_DIR / "csv-KnowledgeG-set.csv"),
         scopus_path = str(DATA_DIR / "scopus_export_Feb 25-2026_d93c044b-5fec-4da5-8d30-ad7cb2501782.csv"),
-        ieee_path   = str(DATA_DIR / "export2026.02.25-06.45.35.csv")
+        ieee_path   = str(DATA_DIR / "export2026.02.25-06.45.35.csv"),
+        verbose     = False,
     )
-    master = identifier.run() 
+    master = identifier.run()
 
-    # --- STEP 02: INTELLIGENT SCREENING ---
-    print("\n>>> STARTING STEP 02: AI THEMATIC ANALYSIS")
-    screener = DataScreening(master)
-    
+    # ----------------------------------------------------------
+    # STEP 02a — AI SCREENING: METHODOLOGY DIMENSION
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 02a: AI SCREENING — METHODOLOGY")
+    print("=" * 60)
 
-    
-    model_labels = [
-        "Knowledge Graphs",
-        "Foundation Models",
-        "Autonomous Agents",
-        "Mechanistic Simulations",
-        "Graph Neural Networks",
-        "Therapy Response Prediction"  
-    ]  
+    method_labels = [
+        "Multimodal Foundation Models",        # standalone FMs, LLMs, VLMs, pathology FMs
+        "Knowledge-Grounded Models",           # FMs or GNNs coupled with KGs / ontologies
+        "Agentic AI and Multi-Agent Systems",  # agent frameworks, MARL, tumor board simulation
+    ]
 
-    master_tagged = screener.intelligent_thematic_tagging(model_labels, threshold=0.25)
+    screener_methods = DataScreening(
+        master_df  = master,
+        cache_path = OUT_DIR / "step02a_cache_methods.csv",
+        batch_size = 32,
+    )
+    master_methods = screener_methods.intelligent_thematic_tagging(
+        candidate_labels = method_labels,
+        threshold        = 0.25,
+    )
 
-    
-    rename_mapping = {
-        "Knowledge Graphs": "Knowledge Graphs & Clinical Data",
-        "Graph Neural Networks": "Static Graph Models (GNNs)",           # Τονίζουμε ότι το τρέχον SOTA είναι στατικό
-        "Therapy Response Prediction": "Therapy Response & Prognosis",   # Ίδιο με τον τίτλο του TRIAGE!
-        "Foundation Models": "Multimodal Foundation Models",             # Το VPH K-FM σου
-        "Mechanistic Simulations": "Mechanistic Tumor Simulations",      # Τα συνθετικά σου δεδομένα
-        "Autonomous Agents": "Agentic AI Decision Support"               # Η απόλυτη καινοτομία σου
-    }
+    # ----------------------------------------------------------
+    # STEP 02b — AI SCREENING: APPLICATION DIMENSION
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 02b: AI SCREENING — APPLICATION")
+    print("=" * 60)
 
-    master_tagged = master_tagged.rename(columns=rename_mapping)
+    application_labels = [
+        "Tumor Diagnosis and Classification",
+        "Drug Repositioning and Biomarker Discovery",
+        "Treatment Optimization",
+        "Prognosis and Survival Prediction",
+        "Clinical Decision Support",
+    ]
 
-    # Αποθήκευση
+    screener_apps = DataScreening(
+        master_df  = master,
+        cache_path = OUT_DIR / "step02b_cache_applications.csv",
+        batch_size = 32,
+    )
+    master_apps = screener_apps.intelligent_thematic_tagging(
+        candidate_labels = application_labels,
+        threshold        = 0.25,
+    )
+
+    # ----------------------------------------------------------
+    # MERGE both dimensions into one master DataFrame
+    # ----------------------------------------------------------
+    master_tagged = master_methods.copy()
+    for col in application_labels:
+        master_tagged[col] = master_apps[col].values
+
     csv_path = OUT_DIR / "step02_master_with_ai_tags.csv"
     master_tagged.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"Dataset with AI tags saved to: {csv_path}")
+    print(f"\n    Full tagged dataset saved: {csv_path}")
 
-    # --- STEP 03: VISUALIZATION ---
-    print("\n>>> STARTING STEP 03: VISUALIZATION")
-    
-    fancy_labels = list(rename_mapping.values())
-    custom_themes = {label: [label] for label in fancy_labels}
-    
-    LiteraturePlots.thematic_heatmap(master_tagged, themes=custom_themes, out_dir=OUT_DIR)
-    
-    print("\nPipeline execution finished successfully!")
+    # ----------------------------------------------------------
+    # STEP 03 — VISUALIZATIONS
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 03: VISUALIZATION")
+    print("=" * 60)
+
+    # Plot 1: Method co-occurrence heatmap (3×3)
+    LiteraturePlots.thematic_heatmap(
+        master   = master_tagged,
+        themes   = method_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03a_method_cooccurrence.png",
+        title    = "Methodology Co-occurrence Heatmap",
+    )
+
+    # Plot 2: Application co-occurrence heatmap (5×5)
+    LiteraturePlots.thematic_heatmap(
+        master   = master_tagged,
+        themes   = application_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03b_application_cooccurrence.png",
+        title    = "Application Co-occurrence Heatmap",
+    )
+
+    # Plot 3: Method × Application matrix (3×5) — key figure for the review
+    LiteraturePlots.method_application_matrix(
+        master             = master_tagged,
+        method_labels      = method_labels,
+        application_labels = application_labels,
+        out_dir            = OUT_DIR,
+    )
+
+    # Plot 4: Temporal trends per method
+    LiteraturePlots.temporal_trends(
+        master   = master_tagged,
+        themes   = method_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03d_temporal_methods.png",
+        title    = "Temporal Trends — Methodology",
+    )
+
+    # ----------------------------------------------------------
+    # DONE
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  Pipeline finished successfully!")
+    print(f"  All outputs saved to: {OUT_DIR}")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
     main()

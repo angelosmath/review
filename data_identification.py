@@ -10,26 +10,34 @@ from pathlib import Path
 
 class LiteratureIdentification:
 
-    def __init__(self, pubmed_path: str, scopus_path: str, ieee_path: str):
-        self.pubmed_path  = pubmed_path
-        self.scopus_path  = scopus_path
-        self.ieee_path    = ieee_path
-        self.master = None  
-        self.OUT_DIR = Path(__file__).resolve().parent.parent / "output" 
+    # Compile patterns once at class level — not per call
+    _REVIEW_STRONG = [
+        "systematic review", "scoping review", "literature review",
+        "narrative review", "umbrella review", "meta-analysis",
+        "meta analysis", "survey", "state of the art", "proceedings",
+        "symposium", "workshop", "congress", "conference"
+    ]
+    _REVIEW_RE = re.compile(r"\breview\b")
+
+    def __init__(self, pubmed_path: str, scopus_path: str, ieee_path: str, verbose: bool = False):
+        self.pubmed_path = pubmed_path
+        self.scopus_path = scopus_path
+        self.ieee_path   = ieee_path
+        self.verbose     = verbose
+        self.master      = None
+        self.OUT_DIR     = Path(__file__).resolve().parent.parent / "output"
         self.OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------------------------
     # PUBLIC METHOD: run everything in sequence
     # ----------------------------------------------------------
     def run(self) -> pd.DataFrame:
-
         self._load()
         self._normalize()
         self._deduplicate()
         self._flag_reviews()
         self._save()
         self._print_summary()
-
         LiteraturePlots.identification_summary(self.master, out_dir=self.OUT_DIR)
         return self.master
 
@@ -37,12 +45,16 @@ class LiteratureIdentification:
     # STEP 1: Load each CSV and map to common schema
     # ----------------------------------------------------------
     def _load(self):
-        """Load the 3 CSVs and standardize column names."""
         print("\n[1/5] Loading CSV files...")
 
         pub    = pd.read_csv(self.pubmed_path)
         scopus = pd.read_csv(self.scopus_path)
         ieee   = pd.read_csv(self.ieee_path)
+
+        if self.verbose:
+            print("  Columns PubMed :", list(pub.columns))
+            print("  Columns Scopus :", list(scopus.columns))
+            print("  Columns IEEE   :", list(ieee.columns))
 
         pub_df = pd.DataFrame({
             "Title":   self.col(pub, "Title"),
@@ -68,14 +80,7 @@ class LiteratureIdentification:
             "Source":  "IEEE"
         })
 
-
-        print("Columns PubMed:", list(pub.columns))
-        print("Columns Scopus:", list(scopus.columns))
-        print("Columns IEEE:", list(ieee.columns))
-
-        self.master = pd.concat(
-            [pub_df, scopus_df, ieee_df], ignore_index=True
-        )
+        self.master = pd.concat([pub_df, scopus_df, ieee_df], ignore_index=True)
 
         print(f"    PubMed : {len(pub_df)} records")
         print(f"    Scopus : {len(scopus_df)} records")
@@ -85,8 +90,7 @@ class LiteratureIdentification:
     # ----------------------------------------------------------
     # STEP 2: Normalize text fields for comparison
     # ----------------------------------------------------------
-    def _normalize(self):        #
-        """Create clean/normalized versions of DOI, Title and Year."""
+    def _normalize(self):
         print("\n[2/5] Normalizing fields...")
 
         self.master["DOI_norm"]   = self.master["DOI"].apply(self.norm_doi)
@@ -113,7 +117,7 @@ class LiteratureIdentification:
         # Start with DOI-based key
         df["dedup_key"] = df["DOI_norm"]
 
-        # 1) No DOI but Title+Year
+        # 1) No DOI but Title + Year
         mask_ty = no_doi & has_title & has_year
         df.loc[mask_ty, "dedup_key"] = (
             "TY:" + df.loc[mask_ty, "Title_norm"] + "|Y:" + df.loc[mask_ty, "Year"]
@@ -127,15 +131,14 @@ class LiteratureIdentification:
         mask_row = no_doi & (~has_title)
         df.loc[mask_row, "dedup_key"] = df.loc[mask_row].index.map(lambda i: f"ROW:{i}")
 
-        # group size + duplicate flag
+        # Group size + duplicate flag
         df["dup_group_size"] = df.groupby("dedup_key")["dedup_key"].transform("size")
         df["flag_duplicate"] = df["dup_group_size"].gt(1)
 
-        print("    QA — Missing DOI   :", int(no_doi.sum()))
-        print("    QA — Missing Title :", int((~has_title).sum()))
-        print("    QA — Missing Year  :", int((~has_year).sum()))
-        print("    Duplicate rows     :", int(df["flag_duplicate"].sum()))
-
+        print(f"    QA — Missing DOI   : {int(no_doi.sum())}")
+        print(f"    QA — Missing Title : {int((~has_title).sum())}")
+        print(f"    QA — Missing Year  : {int((~has_year).sum())}")
+        print(f"    Duplicate rows     : {int(df['flag_duplicate'].sum())}")
 
     # ----------------------------------------------------------
     # STEP 4: Flag review articles
@@ -157,37 +160,32 @@ class LiteratureIdentification:
     # PRINT SUMMARY
     # ----------------------------------------------------------
     def _print_summary(self):
-        total = len(self.master)
+        total        = len(self.master)
         dedup_papers = self.master["dedup_key"].nunique()
-        dupes_removed = len(self.master) - dedup_papers 
-        revconf = int(self.master.loc[self.master["flag_review_conf"], "dedup_key"].nunique())
+        dupes_removed = total - dedup_papers
+        revconf      = int(self.master.loc[self.master["flag_review_conf"], "dedup_key"].nunique())
 
         print("\n" + "=" * 50)
         print(" IDENTIFICATION SUMMARY")
         print("=" * 50)
         print(f"  Total records loaded        : {total}")
-        print(f"  duplicate                   : {dupes_removed}")
-        print(f"  Review/Conf flagged (rows)  : {revconf}")
+        print(f"  Duplicates                  : {dupes_removed}")
+        print(f"  Review/Conf flagged (unique): {revconf}")
         print("=" * 50)
+        print(self.master["Source"].value_counts().to_string())
 
-        print(self.master['Source'].value_counts())
-        
-        
-        
-    
     # ----------------------------------------------------------
     # HELPERS
     # ----------------------------------------------------------
 
-
-    @staticmethod 
+    @staticmethod
     def norm_text(x) -> str:
         if pd.isna(x):
             return ""
         x = str(x).lower().strip()
         x = re.sub(r"\s+", " ", x)
         return x
-    
+
     @staticmethod
     def norm_doi(x) -> str:
         if pd.isna(x):
@@ -196,41 +194,28 @@ class LiteratureIdentification:
         x = re.sub(r"^doi:\s*", "", x)
         x = re.sub(r"^https?://(dx\.)?doi\.org/", "", x)
         x = re.sub(r"\s+", "", x)
-        x = x.rstrip(".,;")                  # κόψε trailing punctuation
+        x = x.rstrip(".,;")
         return x
 
     @staticmethod
     def norm_title(x) -> str:
-        x = LiteratureIdentification.norm_text(x)   # <-- ΟΧΙ self
+        x = LiteratureIdentification.norm_text(x)
         x = re.sub(r"[–—−]", "-", x)
         x = re.sub(r"[^\w\s\-]", "", x)
         x = re.sub(r"\s+", " ", x).strip()
         return x
-        
+
     @staticmethod
     def col(df: pd.DataFrame, name: str, default=""):
-        """Safe column getter: returns df[name] if exists else default (scalar or Series)."""
+        """Safe column getter: returns df[name] if exists, else default (scalar or Series)."""
         if name in df.columns:
             return df[name]
         if not isinstance(default, pd.Series):
             return pd.Series([default] * len(df), index=df.index)
         return default
-    
-    
+
     def _is_review(self, title: str) -> bool:
         t = LiteratureIdentification.norm_title(title)
-
-        # strong phrases
-        strong = [
-            "systematic review", "scoping review", "literature review",
-            "narrative review", "umbrella review", "meta-analysis",
-            "meta analysis", "survey", "state of the art", "proceedings",
-            "symposium", "workshop", "congress", "conference"
-        ]
-        if any(s in t for s in strong):
+        if any(s in t for s in self._REVIEW_STRONG):
             return True
-
-        # whole-word review
-        return re.search(r"\breview\b", t) is not None
-    
-
+        return bool(self._REVIEW_RE.search(t))
