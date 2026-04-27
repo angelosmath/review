@@ -255,8 +255,62 @@ class LiteraturePlots:
 
         ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
         ax.set_xlabel("Year", fontsize=11)
-        ax.set_ylabel("Paper Count", fontsize=11)
+        ax.set_ylabel("log₁₀(Paper Count + 1)", fontsize=11)
         ax.legend(fontsize=9, loc="upper left", framealpha=0.7)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        plt.tight_layout()
+
+        if out_dir:
+            out_path = Path(out_dir) / filename
+            plt.savefig(out_path, dpi=300)
+            plt.close()
+            print(f"    Plot saved: {filename}")
+
+    # ----------------------------------------------------------
+    # PLOT 5: Category counts bar chart
+    # ----------------------------------------------------------
+    @staticmethod
+    def category_counts(
+        master:   pd.DataFrame,
+        labels:   list[str],
+        out_dir:  Path | None = None,
+        filename: str = "category_counts.png",
+        title:    str = "Papers per Category",
+        color:    str = "#4C72B0",
+    ):
+        """
+        Horizontal bar chart showing how many papers were tagged positive
+        for each label.
+
+        Args:
+            master   : DataFrame with one binary column per label.
+            labels   : List of label column names.
+            out_dir  : Directory to save the PNG.
+            filename : Output filename.
+            title    : Plot title.
+            color    : Bar color.
+        """
+        missing = [l for l in labels if l not in master.columns]
+        if missing:
+            raise ValueError(f"Label columns missing from DataFrame: {missing}")
+
+        counts = master[labels].sum().astype(int).sort_values(ascending=True)
+
+        fig, ax = plt.subplots(figsize=(10, max(4, len(labels) * 1.2)))
+        bars = ax.barh(counts.index, counts.values, color=color, edgecolor="white", height=0.6)
+
+        for bar, val in zip(bars, counts.values):
+            ax.text(
+                val + max(counts.values) * 0.01,
+                bar.get_y() + bar.get_height() / 2,
+                str(val),
+                va="center", fontsize=11, fontweight="bold",
+            )
+
+        ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+        ax.set_xlabel("Number of Papers", fontsize=11)
+        ax.set_xlim(0, max(counts.values) * 1.15 if max(counts.values) > 0 else 1)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         plt.tight_layout()

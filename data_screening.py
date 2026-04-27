@@ -2,6 +2,7 @@ from transformers import pipeline
 import pandas as pd
 import torch
 from pathlib import Path
+from tqdm import tqdm
 
 
 class DataScreening:
@@ -15,9 +16,10 @@ class DataScreening:
       - Cleaner score extraction (no repeated list.index() calls inside list comprehensions)
     """
 
-    # Lighter and faster than facebook/bart-large-mnli with comparable accuracy
-    # for short scientific titles. Swap back to bart-large-mnli if accuracy drops.
-    DEFAULT_MODEL = "cross-encoder/bart-large-mnli"
+    # Top-ranked zero-shot NLI model on scientific text.
+    # Consistently outperforms bart-large-mnli on NLI benchmarks.
+    # Swap to "cross-encoder/nli-deberta-v3-small" if GPU memory is limited.
+    DEFAULT_MODEL = "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli"
 
     def __init__(
         self,
@@ -81,14 +83,13 @@ class DataScreening:
             return pd.read_csv(self.cache_path)
 
         titles = self.df["Title"].tolist()
-        print(f"[NLP] Classifying {len(titles)} titles | {len(candidate_labels)} themes | batch_size={self.batch_size}")
+        n_batches = (len(titles) + self.batch_size - 1) // self.batch_size
+        print(f"[NLP] Classifying {len(titles)} titles | {len(candidate_labels)} themes | {n_batches} batches")
 
-        results = self.classifier(
-            titles,
-            candidate_labels,
-            multi_label=True,
-            batch_size=self.batch_size,
-        )
+        batches = [titles[i:i + self.batch_size] for i in range(0, len(titles), self.batch_size)]
+        results = []
+        for batch in tqdm(batches, desc="Classifying", unit="batch"):
+            results.extend(self.classifier(batch, candidate_labels, multi_label=True))
 
         # Debug: show top-3 scores for the first paper
         print("\n[DEBUG] Top scores for paper #1:")

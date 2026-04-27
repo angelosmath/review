@@ -19,13 +19,13 @@ class LiteratureIdentification:
     ]
     _REVIEW_RE = re.compile(r"\breview\b")
 
-    def __init__(self, pubmed_path: str, scopus_path: str, ieee_path: str, verbose: bool = False):
+    def __init__(self, pubmed_path: str, scopus_path: str, ieee_path: str, verbose: bool = False, out_dir: Path | None = None):
         self.pubmed_path = pubmed_path
         self.scopus_path = scopus_path
         self.ieee_path   = ieee_path
         self.verbose     = verbose
         self.master      = None
-        self.OUT_DIR     = Path(__file__).resolve().parent.parent / "output"
+        self.OUT_DIR     = Path(out_dir) if out_dir else Path(__file__).resolve().parent.parent / "output"
         self.OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------------------------
@@ -140,7 +140,7 @@ class LiteratureIdentification:
         print(f"    QA — Missing Year  : {int((~has_year).sum())}")
         print(f"    Duplicate rows     : {int(df['flag_duplicate'].sum())}")
 
-    # ----------------------------------------------------------
+    # ----------------------------------------------------------   
     # STEP 4: Flag review articles
     # ----------------------------------------------------------
     def _flag_reviews(self):

@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 from data_identification import LiteratureIdentification
 from data_screening import DataScreening
 from data_plots import LiteraturePlots
@@ -10,10 +11,12 @@ def main():
     # ----------------------------------------------------------
     # PATHS
     # ----------------------------------------------------------
-    BASE_DIR = Path("/home/amath/Desktop/review_v1")
-    DATA_DIR = BASE_DIR / "data"
-    OUT_DIR  = BASE_DIR / "output"
+    BASE_DIR  = Path("/home/amath/Desktop/review_v1")
+    DATA_DIR  = BASE_DIR / "data"
+    run_stamp = datetime.now().strftime("run_%b-%d-%Y_%Hh%M")
+    OUT_DIR   = BASE_DIR / "output" / run_stamp
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"\n  Run output folder: {OUT_DIR}")
 
     # ----------------------------------------------------------
     # STEP 01 — DATA IDENTIFICATION
@@ -23,10 +26,11 @@ def main():
     print("=" * 60)
 
     identifier = LiteratureIdentification(
-        pubmed_path = str(DATA_DIR / "csv-KnowledgeG-set.csv"),
-        scopus_path = str(DATA_DIR / "scopus_export_Feb 25-2026_d93c044b-5fec-4da5-8d30-ad7cb2501782.csv"),
-        ieee_path   = str(DATA_DIR / "export2026.02.25-06.45.35.csv"),
+        pubmed_path = str(DATA_DIR / "csv-OncologyOR-set.csv"),
+        scopus_path = str(DATA_DIR / "scopus_export_Apr 15-2026_b03f960e-1251-4326-81dd-cfa9cf7f512b.csv"),
+        ieee_path   = str(DATA_DIR / "export2026.04.15-05.06.59.csv"),
         verbose     = False,
+        out_dir     = OUT_DIR,
     )
     master = identifier.run()
 
@@ -129,6 +133,26 @@ def main():
         out_dir  = OUT_DIR,
         filename = "step03d_temporal_methods.png",
         title    = "Temporal Trends — Methodology",
+    )
+
+    # Plot 5: Category counts — methodology
+    LiteraturePlots.category_counts(
+        master   = master_tagged,
+        labels   = method_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03e_counts_methods.png",
+        title    = "Papers per Methodology Category",
+        color    = "#4C72B0",
+    )
+
+    # Plot 6: Category counts — applications
+    LiteraturePlots.category_counts(
+        master   = master_tagged,
+        labels   = application_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03f_counts_applications.png",
+        title    = "Papers per Application Category",
+        color    = "#16a085",
     )
 
     # ----------------------------------------------------------
