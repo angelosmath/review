@@ -534,13 +534,16 @@ class LiteraturePlots:
         # ── SCREENING ─────────────────────────────────────────────
         if include_title_screen:
             mbox(15.4, 0.9,
-                 f"AI title screening (NLI model)\nn = {for_screening}",
+                 f"Title screening, AI-assisted (NLI model)\nn = {for_screening}",
                  fc="#EBF5EB", ec="#27AE60")
 
-            excl2 = (f"• Excluded — not relevant to RQs\n"
-                     f"  (n = {title_screen_excluded})\n"
-                     f"• DeBERTa-v3-large, thr. = 0.92")
-            ebox(15.4, 1.3, excl2, fc="#EAFAF1", ec="#27AE60", fs=8.5)
+            excl2 = (f"Records removed based on exclusion criteria\n"
+                     f"(n = {title_screen_excluded})\n"
+                     f"• No Multimodal Foundation Model / LLM\n"
+                     f"• No Knowledge Graph / GNN integration\n"
+                     f"• No Agentic / Multi-Agent framework\n"
+                     f"• Traditional ML / DL methods only")
+            ebox(15.4, 1.8, excl2, fc="#EAFAF1", ec="#27AE60", fs=8.5)
             arr_excl(15.4)
 
             arr_down(14.95, 13.75)
@@ -627,9 +630,9 @@ class LiteraturePlots:
         bc_only  = int((~A &  B &  C).sum())
         abc      = int((A  &  B &  C).sum())
 
-        fig, ax = plt.subplots(figsize=(9, 7))
-        ax.set_xlim(-1.5, 1.5)
-        ax.set_ylim(-1.4, 1.4)
+        fig, ax = plt.subplots(figsize=(9, 8))
+        ax.set_xlim(-1.7, 1.7)
+        ax.set_ylim(-1.6, 1.6)
         ax.set_aspect("equal")
         ax.axis("off")
 
@@ -644,9 +647,9 @@ class LiteraturePlots:
                                 linewidth=2, edgecolor=colors[i])
             ax.add_patch(circle)
 
-        # Short labels on circle edges
-        short = [lb.split()[0] for lb in method_labels]
-        label_pos = [(-0.82, 0.72), (0.82, 0.72), (0.0, -1.05)]
+        # Labels just outside each circle in the outward direction
+        short = ["Multimodal FMs", "Knowledge-\nGrounded Models", "Agentic AI systems"]
+        label_pos = [(-0.68, 0.93), (0.68, 0.93), (0.0, -1.04)]
         for i, (lx, ly) in enumerate(label_pos):
             ax.text(lx, ly, short[i], ha="center", va="center",
                     fontsize=10, fontweight="bold", color=colors[i])

@@ -9,7 +9,8 @@ from data_plots import LiteraturePlots
 # TEST_MODE — set True for quick test runs (small model, small batches)
 #             set False for the final production run (full model)
 # ----------------------------------------------------------
-TEST_MODE = True
+TEST_MODE = False
+
 
 
 def main():
@@ -126,7 +127,7 @@ def main():
     # A paper passes if at least one RQ score exceeds the screening threshold.
     # This threshold is intentionally higher than the tagging threshold (0.25)
     # to reduce the pool to a manageable size for abstract screening.
-    SCREEN_THRESHOLD = 0.92
+    SCREEN_THRESHOLD = 0.75
 
     score_cols = [f"{l}_score" for l in method_labels]
     master_tagged["title_screen_pass"] = (
@@ -263,6 +264,54 @@ def main():
     screened[keep_cols].to_csv(screening_csv, index=False, encoding="utf-8-sig")
     print(f"\n    Papers for abstract screening : {_title_passed}")
     print(f"    CSV saved                     : {screening_csv}")
+
+    # ----------------------------------------------------------
+    # STEP 05 — VALIDATION: threshold & recall checks
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 05: VALIDATION EXPORT")
+    print("=" * 60)
+
+    val_cols = ["Title", "Authors", "Year", "DOI", "Source"] + score_cols
+
+    # --- 5a: Borderline papers (score 0.80–0.92 on any RQ, failed screen) ---
+    excluded = master_tagged[~master_tagged["title_screen_pass"]].copy()
+    excluded["_max_score"] = excluded[score_cols].max(axis=1)
+
+    borderline = excluded[excluded["_max_score"] >= 0.80].copy()
+    borderline = borderline.sort_values("_max_score", ascending=False)
+    borderline["Your_Decision"] = ""   # Include / Exclude
+    borderline["Notes"]         = ""
+
+    borderline_csv = OUT_DIR / "step05a_borderline_papers.csv"
+    borderline[val_cols + ["_max_score", "Your_Decision", "Notes"]].to_csv(
+        borderline_csv, index=False, encoding="utf-8-sig"
+    )
+    print(f"\n    5a — Borderline papers (score 0.80–0.92) : {len(borderline)}")
+    print(f"         CSV : {borderline_csv}")
+
+    # --- 5b: Random excluded sample (30 papers from non-borderline excluded) ---
+    deep_excluded = excluded[excluded["_max_score"] < 0.80].copy()
+    sample_n = min(30, len(deep_excluded))
+    random_sample = deep_excluded.sample(sample_n, random_state=42)
+    random_sample = random_sample.sort_values("_max_score", ascending=False)
+    random_sample["Your_Decision"] = ""
+    random_sample["Notes"]         = ""
+
+    random_csv = OUT_DIR / "step05b_random_excluded_sample.csv"
+    random_sample[val_cols + ["_max_score", "Your_Decision", "Notes"]].to_csv(
+        random_csv, index=False, encoding="utf-8-sig"
+    )
+    print(f"\n    5b — Random excluded sample              : {sample_n} / {len(deep_excluded)}")
+    print(f"         CSV : {random_csv}")
+
+    print(f"""
+    HOW TO USE:
+      1. Open each CSV and fill in 'Your_Decision' (Include / Exclude)
+      2. False-negative estimate = (Include count in 5b / {sample_n}) × {len(deep_excluded)}
+      3. If 5a has many 'Include' papers → lower SCREEN_THRESHOLD
+      4. Report both numbers in manuscript Section 2.5
+    """)
 
     # ----------------------------------------------------------
     # DONE
