@@ -19,6 +19,7 @@ class LiteratureIdentification:
     ]
     _REVIEW_RE = re.compile(r"\breview\b")
 
+
     def __init__(self, pubmed_path: str, scopus_path: str, ieee_path: str, verbose: bool = False, out_dir: Path | None = None):
         self.pubmed_path = pubmed_path
         self.scopus_path = scopus_path

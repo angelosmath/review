@@ -5,13 +5,19 @@ from data_identification import LiteratureIdentification
 from data_screening import DataScreening
 from data_plots import LiteraturePlots
 
+# ----------------------------------------------------------
+# TEST_MODE — set True for quick test runs (small model, small batches)
+#             set False for the final production run (full model)
+# ----------------------------------------------------------
+TEST_MODE = True
+
 
 def main():
 
     # ----------------------------------------------------------
     # PATHS
     # ----------------------------------------------------------
-    BASE_DIR  = Path("/home/amath/Desktop/review_v1")
+    BASE_DIR  = Path(__file__).resolve().parent.parent
     DATA_DIR  = BASE_DIR / "data"
     run_stamp = datetime.now().strftime("run_%b-%d-%Y_%Hh%M")
     OUT_DIR   = BASE_DIR / "output" / run_stamp
@@ -34,6 +40,13 @@ def main():
     )
     master = identifier.run()
 
+    # Collect PRISMA counts — diagram generated once at the end (Step 03) with full numbers
+    _total      = len(master)
+    _dedup      = master["dedup_key"].nunique()
+    _dupes      = _total - _dedup
+    _rev_conf   = int(master.loc[master["flag_review_conf"], "dedup_key"].nunique())
+    _screening  = _dedup - _rev_conf
+
     # ----------------------------------------------------------
     # STEP 02a — AI SCREENING: METHODOLOGY DIMENSION
     # ----------------------------------------------------------
@@ -47,14 +60,19 @@ def main():
         "Agentic AI and Multi-Agent Systems",  # agent frameworks, MARL, tumor board simulation
     ]
 
+    _model      = DataScreening.FAST_MODEL if TEST_MODE else None   # None → DEFAULT_MODEL
+    _batch_size = 8 if TEST_MODE else 32
+    _threshold  = 0.25
+
     screener_methods = DataScreening(
         master_df  = master,
         cache_path = OUT_DIR / "step02a_cache_methods.csv",
-        batch_size = 32,
+        model_name = _model,
+        batch_size = _batch_size,
     )
     master_methods = screener_methods.intelligent_thematic_tagging(
         candidate_labels = method_labels,
-        threshold        = 0.25,
+        threshold        = _threshold,
     )
 
     # ----------------------------------------------------------
@@ -66,32 +84,65 @@ def main():
 
     application_labels = [
         "Tumor Diagnosis and Classification",
-        "Drug Repositioning and Biomarker Discovery",
         "Treatment Optimization",
         "Prognosis and Survival Prediction",
-        "Clinical Decision Support",
+        "Tumor Board Simulation and Workflow Integration",
     ]
 
     screener_apps = DataScreening(
         master_df  = master,
         cache_path = OUT_DIR / "step02b_cache_applications.csv",
-        batch_size = 32,
+        model_name = _model,
+        batch_size = _batch_size,
     )
     master_apps = screener_apps.intelligent_thematic_tagging(
         candidate_labels = application_labels,
-        threshold        = 0.25,
+        threshold        = _threshold,
     )
 
     # ----------------------------------------------------------
     # MERGE both dimensions into one master DataFrame
     # ----------------------------------------------------------
-    master_tagged = master_methods.copy()
-    for col in application_labels:
-        master_tagged[col] = master_apps[col].values
+    app_cols = ["dedup_key"] + application_labels + [f"{l}_score" for l in application_labels]
+    master_tagged = master_methods.merge(
+        master_apps[app_cols],
+        on="dedup_key",
+        how="left",
+        suffixes=("", "_app"),
+    )
 
     csv_path = OUT_DIR / "step02_master_with_ai_tags.csv"
     master_tagged.to_csv(csv_path, index=False, encoding="utf-8-sig")
     print(f"\n    Full tagged dataset saved: {csv_path}")
+
+    # ----------------------------------------------------------
+    # STEP 02c — TITLE SCREENING (RQ relevance filter)
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 02c: TITLE SCREENING")
+    print("=" * 60)
+
+    # Use the already-computed method scores from Step 02a.
+    # A paper passes if at least one RQ score exceeds the screening threshold.
+    # This threshold is intentionally higher than the tagging threshold (0.25)
+    # to reduce the pool to a manageable size for abstract screening.
+    SCREEN_THRESHOLD = 0.92
+
+    score_cols = [f"{l}_score" for l in method_labels]
+    master_tagged["title_screen_pass"] = (
+        master_tagged[score_cols]
+        .gt(SCREEN_THRESHOLD)
+        .any(axis=1)
+    )
+
+    screened       = master_tagged[master_tagged["title_screen_pass"]].copy()
+    _title_passed  = len(screened)
+    _title_excluded = len(master_tagged) - _title_passed
+
+    print(f"\n    Screening threshold   : {SCREEN_THRESHOLD}")
+    print(f"    Papers before screen  : {len(master_tagged)}")
+    print(f"    Papers passed         : {_title_passed}")
+    print(f"    Papers excluded       : {_title_excluded}")
 
     # ----------------------------------------------------------
     # STEP 03 — VISUALIZATIONS
@@ -101,30 +152,30 @@ def main():
     print("=" * 60)
 
     # Plot 1: Method co-occurrence heatmap (3×3)
-    LiteraturePlots.thematic_heatmap(
-        master   = master_tagged,
-        themes   = method_labels,
-        out_dir  = OUT_DIR,
-        filename = "step03a_method_cooccurrence.png",
-        title    = "Methodology Co-occurrence Heatmap",
-    )
+    # LiteraturePlots.thematic_heatmap(
+    #     master   = master_tagged,
+    #     themes   = method_labels,
+    #     out_dir  = OUT_DIR,
+    #     filename = "step03a_method_cooccurrence.png",
+    #     title    = "Methodology Co-occurrence Heatmap",
+    # )
 
     # Plot 2: Application co-occurrence heatmap (5×5)
-    LiteraturePlots.thematic_heatmap(
-        master   = master_tagged,
-        themes   = application_labels,
-        out_dir  = OUT_DIR,
-        filename = "step03b_application_cooccurrence.png",
-        title    = "Application Co-occurrence Heatmap",
-    )
+    # LiteraturePlots.thematic_heatmap(
+    #     master   = master_tagged,
+    #     themes   = application_labels,
+    #     out_dir  = OUT_DIR,
+    #     filename = "step03b_application_cooccurrence.png",
+    #     title    = "Application Co-occurrence Heatmap",
+    # )
 
     # Plot 3: Method × Application matrix (3×5) — key figure for the review
-    LiteraturePlots.method_application_matrix(
-        master             = master_tagged,
-        method_labels      = method_labels,
-        application_labels = application_labels,
-        out_dir            = OUT_DIR,
-    )
+    # LiteraturePlots.method_application_matrix(
+    #     master             = master_tagged,
+    #     method_labels      = method_labels,
+    #     application_labels = application_labels,
+    #     out_dir            = OUT_DIR,
+    # )
 
     # Plot 4: Temporal trends per method
     LiteraturePlots.temporal_trends(
@@ -154,6 +205,64 @@ def main():
         title    = "Papers per Application Category",
         color    = "#16a085",
     )
+
+    # Plot 7: Venn diagram — RQ overlap among title-screened papers
+    LiteraturePlots.venn_rq_overlap(
+        master        = screened,
+        method_labels = method_labels,
+        out_dir       = OUT_DIR,
+    )
+
+    # Updated PRISMA with title screening row
+    LiteraturePlots.prisma_flowchart(
+        pubmed_n               = int((master["Source"] == "PubMed").sum()),
+        scopus_n               = int((master["Source"] == "Scopus").sum()),
+        ieee_n                 = int((master["Source"] == "IEEE").sum()),
+        total_raw              = _total,
+        duplicates_removed     = _dupes,
+        after_dedup            = _dedup,
+        reviews_conf_excluded  = _rev_conf,
+        for_screening          = _screening,
+        title_screen_passed    = _title_passed,
+        title_screen_excluded  = _title_excluded,
+        out_dir                = OUT_DIR,
+        filename               = "step00_prisma_flowchart_full.png",
+    )
+
+    # Plot: Donut chart — methodology distribution (screened papers only)
+    LiteraturePlots.distribution_pie(
+        master   = screened,
+        labels   = method_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03g_pie_methods.png",
+        title    = "Methodology Distribution (n = {})".format(_title_passed),
+        colors   = ["#4C72B0", "#DD8452", "#55A868"],
+    )
+
+    # Plot 8: Donut chart — application distribution (screened papers only)
+    LiteraturePlots.distribution_pie(
+        master   = screened,
+        labels   = application_labels,
+        out_dir  = OUT_DIR,
+        filename = "step03h_pie_applications.png",
+        title    = "Application Distribution (n = {})".format(_title_passed),
+        colors   = ["#C44E52", "#8172B2", "#937860", "#DA8BC3"],
+    )
+
+    # ----------------------------------------------------------
+    # STEP 04 — EXPORT: papers for manual abstract screening
+    # ----------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("  STEP 04: EXPORT FOR ABSTRACT SCREENING")
+    print("=" * 60)
+
+    keep_cols = ["Title", "Authors", "Year", "DOI", "Source"] \
+                + method_labels + application_labels
+
+    screening_csv = OUT_DIR / "step04_papers_for_abstract_screening.csv"
+    screened[keep_cols].to_csv(screening_csv, index=False, encoding="utf-8-sig")
+    print(f"\n    Papers for abstract screening : {_title_passed}")
+    print(f"    CSV saved                     : {screening_csv}")
 
     # ----------------------------------------------------------
     # DONE

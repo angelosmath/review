@@ -16,10 +16,10 @@ class DataScreening:
       - Cleaner score extraction (no repeated list.index() calls inside list comprehensions)
     """
 
-    # Top-ranked zero-shot NLI model on scientific text.
-    # Consistently outperforms bart-large-mnli on NLI benchmarks.
-    # Swap to "cross-encoder/nli-deberta-v3-small" if GPU memory is limited.
+    # Full model — top-ranked zero-shot NLI on scientific text (~1.5 GB, ~2 h on CPU)
     DEFAULT_MODEL = "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli"
+    # Fast model — ~10x faster, good enough for threshold exploration / test runs (~180 MB)
+    FAST_MODEL    = "cross-encoder/nli-deberta-v3-small"
 
     def __init__(
         self,
@@ -51,13 +51,19 @@ class DataScreening:
             return
 
         print(f"[NLP] Loading model       : {self._model_name}")
-        device = 0 if torch.cuda.is_available() else -1
+        cuda_ok = torch.cuda.is_available()
+        if cuda_ok:
+            print(f"[NLP] Device              : GPU — {torch.cuda.get_device_name(0)}")
+            pipe_kwargs = {"device_map": "auto"}
+        else:
+            print(f"[NLP] Device              : CPU (no CUDA found)")
+            pipe_kwargs = {"device": -1}
+
         self.classifier = pipeline(
             "zero-shot-classification",
             model=self._model_name,
-            device=device,
+            **pipe_kwargs,
         )
-        print(f"[NLP] Device              : {'GPU' if device == 0 else 'CPU'}")
 
     # ----------------------------------------------------------
     # PUBLIC: Run thematic tagging
@@ -77,10 +83,17 @@ class DataScreening:
         Returns:
             DataFrame with one binary column per theme appended.
         """
-        # --- Checkpoint: return early if cache exists ---
+        # --- Checkpoint: return early if cache is valid ---
         if self.cache_path and self.cache_path.exists():
+            cached = pd.read_csv(self.cache_path)
+            missing_cols = [l for l in candidate_labels if l not in cached.columns]
+            if missing_cols:
+                print(f"[NLP] Cache is stale (missing columns: {missing_cols}).")
+                raise RuntimeError(
+                    f"Stale cache — delete '{self.cache_path}' and re-run."
+                )
             print(f"[NLP] Loading from cache: {self.cache_path}")
-            return pd.read_csv(self.cache_path)
+            return cached
 
         titles = self.df["Title"].tolist()
         n_batches = (len(titles) + self.batch_size - 1) // self.batch_size
@@ -97,14 +110,17 @@ class DataScreening:
             print(f"  {label}: {score:.3f}")
         print("-" * 40)
 
-        # Build score lookup per result to avoid O(n) list.index() inside comprehension
+        # Build score lookup — store both binary flag and raw float score
         score_map = {}
         for label in candidate_labels:
-            scores = []
+            binary, raw = [], []
             for r in results:
                 label_scores = dict(zip(r["labels"], r["scores"]))
-                scores.append(1 if label_scores.get(label, 0.0) > threshold else 0)
-            score_map[label] = scores
+                s = label_scores.get(label, 0.0)
+                binary.append(1 if s > threshold else 0)
+                raw.append(round(s, 4))
+            score_map[label] = binary
+            score_map[f"{label}_score"] = raw   # keep raw score for post-hoc threshold tuning
 
         self.df = self.df.assign(**score_map)
 
