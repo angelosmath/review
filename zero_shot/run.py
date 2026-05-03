@@ -1,5 +1,10 @@
-import pandas as pd
+import sys
 from pathlib import Path
+
+# Allow imports of data_identification and data_plots from review/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pandas as pd
 from datetime import datetime
 from data_identification import LiteratureIdentification
 from data_screening import DataScreening
@@ -18,7 +23,7 @@ def main():
     # ----------------------------------------------------------
     # PATHS
     # ----------------------------------------------------------
-    BASE_DIR  = Path(__file__).resolve().parent.parent
+    BASE_DIR  = Path(__file__).resolve().parent.parent.parent   # phd/
     DATA_DIR  = BASE_DIR / "data"
     run_stamp = datetime.now().strftime("run_%b-%d-%Y_%Hh%M")
     OUT_DIR   = BASE_DIR / "output" / run_stamp
