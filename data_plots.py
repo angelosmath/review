@@ -685,3 +685,64 @@ class LiteraturePlots:
             plt.savefig(out_path, dpi=300, bbox_inches="tight")
             plt.close()
             print(f"    Plot saved: {filename}")
+
+    # ----------------------------------------------------------
+    # PLOT 9: Cancer type distribution horizontal bar chart
+    # ----------------------------------------------------------
+    @staticmethod
+    def cancer_type_distribution(
+        master:   pd.DataFrame,
+        column:   str = "Cancer Type",
+        out_dir:  Path | None = None,
+        filename: str = "step03i_cancer_type_distribution.png",
+        color:    str = "#C0392B",
+    ):
+        if column not in master.columns:
+            print(f"    [cancer_type_distribution] Column '{column}' not found — skipping plot.")
+            return
+
+        counts = (
+            master[column]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+        )
+        # Split multi-value cells (comma or semicolon separated)
+        counts = counts.str.split(r"[,;]+").explode().str.strip()
+        counts = counts[counts != ""].value_counts().sort_values(ascending=True)
+
+        if counts.empty:
+            print(f"    [cancer_type_distribution] No data in column '{column}' — skipping.")
+            return
+
+        fig, ax = plt.subplots(figsize=(11, max(4, len(counts) * 0.55)))
+        bars = ax.barh(counts.index, counts.values, color=color, edgecolor="white", height=0.65)
+
+        for bar, val in zip(bars, counts.values):
+            ax.text(
+                val + max(counts.values) * 0.01,
+                bar.get_y() + bar.get_height() / 2,
+                str(val),
+                va="center", fontsize=10, fontweight="bold",
+            )
+
+        n_with_type = int(
+            master[column].dropna().astype(str).str.strip().replace("", pd.NA).dropna().shape[0]
+        )
+        ax.set_title(
+            f"Cancer Type Distribution (n = {n_with_type} of {len(master)} screened papers)",
+            fontsize=14, fontweight="bold", pad=15,
+        )
+        ax.set_xlabel("Number of Papers", fontsize=11)
+        ax.set_xlim(0, max(counts.values) * 1.18)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        plt.tight_layout()
+
+        if out_dir:
+            out_path = Path(out_dir) / filename
+            plt.savefig(out_path, dpi=300)
+            plt.close()
+            print(f"    Plot saved: {filename}")
